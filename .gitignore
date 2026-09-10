@@ -1,0 +1,5 @@
+# 仅忽略根目录下生成的报告与检查产物（不影响技能内的 assets/template.pptx）
+/*.pptx
+/*_check/
+__pycache__/
+*.pyc

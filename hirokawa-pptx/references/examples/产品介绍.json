@@ -1,0 +1,34 @@
+{
+  "title": "产品介绍",
+  "doc_no": "（广川）技术A202609-04",
+  "version": "V1.0",
+  "draw_name": "张三",
+  "draw_date": "26/09",
+  "revision": [["00", "2026-09-10", "初版", "张三", "-"]],
+  "toc": ["一、产品概述", "二、实拍照片"],
+  "slides": [
+    {
+      "type": "image_text",
+      "title": "一、产品概述",
+      "image": "/path/to/设备照片.png",
+      "image_side": "right",
+      "caption": "▲ EFEM 晶圆传输设备",
+      "blocks": [
+        ["h", "1.1 产品概述"],
+        ["p", "300mm 晶圆传输系统，集成机械手、Load Port 与预对准模块。"],
+        ["b", "传输效率 ≥ 300 WPH"],
+        ["b", "洁净度 Class 1"]
+      ]
+    },
+    {
+      "type": "gallery",
+      "title": "二、实拍照片",
+      "images": [
+        {"path": "/path/to/照片1.png", "caption": "末端执行器"},
+        {"path": "/path/to/照片2.png", "caption": "操作面板"},
+        {"path": "/path/to/照片3.png", "caption": "设备整机"}
+      ]
+    }
+  ],
+  "thanks": "THANKS"
+}
