@@ -61,6 +61,14 @@ from pptx.oxml.ns import qn
 NAVY = RGBColor(0x28, 0x16, 0x6F)
 BLUE = RGBColor(0x5B, 0x9B, 0xD5)
 BLACK = RGBColor(0x00, 0x00, 0x00)
+# 表格镶边行（公司规范）：表头藏青白字，正文行双色交替
+BAND_A = RGBColor(0xCD, 0xCC, 0xD5)
+BAND_B = RGBColor(0xE8, 0xE7, 0xEB)
+# 重点凸显统一方案（商务三色，强调=加粗+变色）：
+#   blue=关键结论/核心数据  red=问题/风险/不合格
+#   green=完成/达成/合格    orange=进行中/待关注
+EMPHASIS = {'red': 'C00000', 'blue': '1F4E79',
+            'green': '2E7D32', 'orange': 'ED7D31'}
 
 TEMPLATE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                         '..', 'assets', 'template.pptx')
@@ -121,6 +129,42 @@ def find_shape(slide, contains=None, shape_type=None, ph_type=None):
                 continue
         return sh
     return None
+
+
+def parse_rich(text):
+    """解析行内标记: [red]..[/red] [blue] [green] [orange] 与 **加粗**。
+    返回 [(segment, color_hex_or_None, bold)]，强调色段自动加粗。"""
+    import re as _re
+    segs = []
+    pos = 0
+    pat = _re.compile(r'\[(red|blue|green|orange)\](.*?)\[/\1\]')
+    for m in pat.finditer(text):
+        if m.start() > pos:
+            segs.append((text[pos:m.start()], None, False))
+        segs.append((m.group(2), EMPHASIS[m.group(1)], True))
+        pos = m.end()
+    if pos < len(text):
+        segs.append((text[pos:], None, False))
+    # 各段内再处理 **加粗**
+    out = []
+    for seg, color, emph in segs:
+        parts = seg.split('**')
+        for k, part in enumerate(parts):
+            if part:
+                out.append((part, color, emph or k % 2 == 1))
+    return out
+
+
+def write_rich(para, text, size, ea_font, latin_font='Times New Roman',
+               base_bold=False, base_color=BLACK):
+    """向段落写入富文本（解析行内标记）。"""
+    for seg, color, bold in parse_rich(text):
+        r = para.add_run()
+        r.text = seg
+        r.font.size = Pt(size)
+        r.font.bold = bold or base_bold
+        r.font.color.rgb = RGBColor.from_string(color) if color else base_color
+        set_cjk(r, ea_font, latin_font)
 
 
 def set_cjk(run, ea_font, latin_font=None):
@@ -195,22 +239,12 @@ def write_blocks(body_shape, blocks, clear=True):
         r._r.getparent().remove(r._r)
 
     def add(para, kind, text):
-        r = para.add_run()
         if kind == 'h':
-            r.text = text
-            r.font.size = Pt(20)
-            r.font.bold = True
-            set_cjk(r, '黑体', 'Times New Roman')
+            write_rich(para, text, 20, '黑体', base_bold=True)
         elif kind == 'b':
-            r.text = '◆ ' + text
-            r.font.size = Pt(18)
-            r.font.bold = True
-            set_cjk(r, '仿宋', 'Times New Roman')
+            write_rich(para, '◆ ' + text, 18, '仿宋', base_bold=True)
         else:
-            r.text = text
-            r.font.size = Pt(18)
-            set_cjk(r, '仿宋', 'Times New Roman')
-        r.font.color.rgb = BLACK
+            write_rich(para, text, 18, '仿宋')
     if blocks:
         add(p0, blocks[0][0], blocks[0][1])
         for kind, text in blocks[1:]:
@@ -219,18 +253,24 @@ def write_blocks(body_shape, blocks, clear=True):
         p.space_after = Pt(8)
 
 
-def style_cell(cell, text, bold=False, header=False):
+def style_cell(cell, text, bold=False, header=False, band=0):
     cell.fill.solid()
-    cell.fill.fore_color.rgb = NAVY if header else BLUE
+    cell.fill.fore_color.rgb = NAVY if header else (BAND_A if band % 2 == 0
+                                                    else BAND_B)
     cell.text = text
     for p in cell.text_frame.paragraphs:
         if header:
             p.alignment = PP_ALIGN.CENTER
-        for r in p.runs:
-            r.font.size = Pt(18)
-            r.font.bold = bold or header
-            r.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF) if header else BLACK
-            set_cjk(r, '黑体' if header else '仿宋', 'Times New Roman')
+            for r in p.runs:
+                r.font.size = Pt(18)
+                r.font.bold = True
+                r.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+                set_cjk(r, '黑体', 'Times New Roman')
+        else:
+            txt = p.text
+            for r in list(p.runs):
+                r._r.getparent().remove(r._r)
+            write_rich(p, txt, 18, '仿宋', base_bold=bold)
 
 
 # ---------- 封面/履历/目录/封底 ----------
@@ -259,12 +299,19 @@ def fill_cover(slide, d):
 
 
 def fill_revision(slide, rows):
-    if not rows:
-        return
     tbl_shape = find_shape(slide, shape_type='TABLE')
     if tbl_shape is None:
         return
     tbl = tbl_shape.table
+    # 全表统一为公司镶边行规范（覆盖模板内旧的 #5B9BD5）
+    for ri, row in enumerate(tbl.rows):
+        for cell in row.cells:
+            txt = cell.text
+            style_cell(cell, txt, header=(ri == 0), band=ri - 1)
+            for p in cell.text_frame.paragraphs:
+                p.alignment = PP_ALIGN.CENTER
+    if not rows:
+        return
     for c in range(len(tbl.columns)):
         tbl.cell(1, c).text = ''
     for i, row in enumerate(rows[:len(tbl.rows) - 1]):
@@ -351,7 +398,7 @@ def build_table_slide(slide, spec):
     for i, row in enumerate(rows):
         for j in range(n_cols):
             val = row[j] if j < len(row) else ''
-            style_cell(tbl.cell(1 + i, j), str(val))
+            style_cell(tbl.cell(1 + i, j), str(val), band=i)
     if blocks and b is not None:
         b.top = Inches(1.3 + tbl_h)
         b.height = Inches(6.6 - 1.3 - tbl_h)
@@ -376,7 +423,8 @@ def build_form_slide(slide, spec):
     for i, row in enumerate(fields):
         row = list(row) + [''] * (4 - len(row))
         for j in range(4):
-            style_cell(tbl.cell(i, j), str(row[j]), bold=(j % 2 == 0))
+            style_cell(tbl.cell(i, j), str(row[j]), bold=(j % 2 == 0),
+                       band=i)
         if len(fields[i]) <= 2:  # 仅 标签+值：值合并整行
             tbl.cell(i, 1).merge(tbl.cell(i, 3))
     if b is not None:

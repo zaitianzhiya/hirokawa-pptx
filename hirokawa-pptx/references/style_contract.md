@@ -64,13 +64,29 @@ Extracted directly from the reference PPTX:
 - Position: directly below the title text box, spanning approximately the title width
 - Color: #28166F
 
-## Table Styling
+## Table Styling（2026-09 更新：镶边行规范）
 
 - **Header row**: Background #28166F, text white, bold, 黑体, 18pt
-- **Body rows**: Uniform fill #5B9BD5 for ALL data rows (no alternating colors in the reference)
+- **Body rows（镶边行）**: 双色交替填充 —— 奇数行 #CDCCD5，偶数行 #E8E7EB，黑字
 - **Borders**: Thin white grid lines between cells
 - **Cell alignment**: Center for short labels, left for long content
-- **Form-style tables** (trip summary): Labels in bold, values in regular weight, all on #5B9BD5 fill
+- **Form-style tables** (trip summary): Labels in bold, values in regular weight
+- 旧模板的 #5B9BD5 统一蓝色已废弃，生成时全部重着色为镶边行
+
+## Emphasis Scheme（重点凸显统一方案：商务三色）
+
+强调 = **加粗 + 变色**同时使用；单页强调色不超过 2 种；强调文字占比 ≤15%；
+不单独用颜色传递信息（需配合文字语义）。
+
+| 颜色 | 色值 | 应用场景 |
+|---|---|---|
+| 藏青（蓝） | #1F4E79 | 关键结论、核心数据、标题级强调 |
+| 红 | #C00000 | 问题、风险、延期、不合格 |
+| 绿 | #2E7D32 | 完成、达成、合格、正向结果 |
+| 橙 | #ED7D31 | 进行中、待关注事项 |
+
+行内标记语法（生成器自动解析）：`**加粗**`、`[red]…[/red]`、
+`[blue]…[/blue]`、`[green]…[/green]`、`[orange]…[/orange]`（带色即加粗）。
 
 ## Decorative Elements
 

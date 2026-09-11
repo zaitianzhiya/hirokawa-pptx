@@ -33,7 +33,12 @@ ALLOWED_FONTS = {'微软雅黑', '黑体', '仿宋', 'Times New Roman', 'Arial',
 PLACEHOLDER_PATTERNS = [r'（标题）', r'（正文）', r'正文123', r'\*\*\*',
                         r'2024-\*-\*', r'单击此处', r'编辑母版']
 NAVY = '28166F'
-BLUE = '5B9BD5'
+BLUE = '5B9BD5'  # 旧规范色（履历模板历史遗留），新表不应再出现
+BAND = {'CDCCD5', 'E8E7EB'}  # 镶边行规范色
+# 强调色白名单（商务三色方案）：蓝=结论 红=问题 绿=完成 橙=进行中
+EMPHASIS_OK = {'1F4E79', 'C00000', '2E7D32', 'ED7D31',
+               'FF0000',        # CONFIDENTIAL 徽标
+               '000000', 'FFFFFF', '808080'}
 
 
 class Report:
@@ -174,15 +179,25 @@ def check_tables(prs, rep):
                 continue
             tbl = sh.table
             is_header_tbl = len(tbl.rows) >= 5  # 履历表有表头；概要表无表头
+            prev_band = {}
             for ri, row in enumerate(tbl.rows):
-                for cell in row.cells:
+                for ci, cell in enumerate(row.cells):
                     hexf = _cell_fill_hex(cell)
                     if hexf is None:
                         continue
-                    if hexf not in (BLUE, NAVY):
+                    if is_header_tbl and ri == 0:
+                        if hexf != NAVY:
+                            bad.append(f'第{i}页表头行 颜色#{hexf}≠{NAVY}')
+                    elif hexf == BLUE:
+                        bad.append(f'第{i}页 仍为旧规范色#5B9BD5，'
+                                   '应为镶边行 CDCCD5/E8E7EB')
+                    elif hexf not in BAND and hexf != NAVY:
                         bad.append(f'第{i}页 单元格颜色#{hexf}非规范色')
-                    elif is_header_tbl and ri == 0 and hexf != NAVY:
-                        bad.append(f'第{i}页表头行 颜色#{hexf}≠{NAVY}')
+                    elif hexf in BAND:
+                        if ci in prev_band and prev_band[ci] == hexf:
+                            rep.add('WARN', f'第{i}页表格第{ri+1}行与上行'
+                                            '镶边色相同，应交替')
+                        prev_band[ci] = hexf
             checked += 1
     if bad:
         for m in sorted(set(bad)):
@@ -222,6 +237,48 @@ def check_fonts(prs, rep):
             rep.add('WARN', f'非规范字体 {f!r}（{w}）')
     else:
         rep.add('PASS', '字体全部合规')
+
+
+def check_text_colors(prs, rep):
+    """正文字体颜色白名单：黑/白 + 商务三色强调 + 徽标红。"""
+    A = '{http://schemas.openxmlformats.org/drawingml/2006/main}'
+    bad = {}
+
+    def scan_tf(tf, where):
+        for p in tf.paragraphs:
+            for r in p.runs:
+                rPr = r._r.find(A + 'rPr')
+                if rPr is None:
+                    continue
+                fill = rPr.find(A + 'solidFill')
+                if fill is None:
+                    continue
+                srgb = fill.find(A + 'srgbClr')
+                prst = fill.find(A + 'prstClr')
+                if srgb is not None:
+                    c = srgb.get('val', '').upper()
+                elif prst is not None:
+                    c = {'black': '000000', 'white': 'FFFFFF'}.get(
+                        prst.get('val'), None)
+                else:
+                    continue  # schemeClr 等继承色不校验
+                if c and c not in EMPHASIS_OK:
+                    bad.setdefault('#' + c, where)
+
+    for i, s in enumerate(prs.slides, 1):
+        for sh in s.shapes:
+            if sh.has_text_frame:
+                scan_tf(sh.text_frame, f'第{i}页')
+            if sh.has_table:
+                for row in sh.table.rows:
+                    for c in row.cells:
+                        scan_tf(c.text_frame, f'第{i}页表格')
+    if bad:
+        for c, w in bad.items():
+            rep.add('WARN', f'非白名单字体颜色 {c}（{w}），'
+                            '强调色应为 蓝1F4E79/红C00000/绿2E7D32/橙ED7D31')
+    else:
+        rep.add('PASS', '字体颜色全部在白名单内（含强调色规范）')
 
 
 def check_overflow(prs, rep):
@@ -304,6 +361,7 @@ def main():
     check_overlap(prs, rep)
     check_tables(prs, rep)
     check_fonts(prs, rep)
+    check_text_colors(prs, rep)
     check_overflow(prs, rep)
     if '--no-render' not in sys.argv:
         render_pngs(path, rep)
